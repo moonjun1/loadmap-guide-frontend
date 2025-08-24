@@ -34,6 +34,8 @@ export interface CandidatePoint {
   averageTravelTime: number;
   commercialScore: number;
   overallScore: number;
+  recommendedPlaces?: RecommendedPlace[];
+  areaType?: string;
 }
 
 export interface WeatherInfo {
@@ -59,4 +61,12 @@ export interface Place {
   longitude: number;
   rating: number;
   distanceMeters: number;
+}
+
+export interface RecommendedPlace {
+  name: string;
+  category: string;
+  tags: string[];
+  description: string;
+  distance: number;
 }
