@@ -1,6 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
-import { CandidatePoint, WeatherInfo } from '../types/kakao';
+import { CandidatePoint, WeatherInfo, RecommendedPlace } from '../types/kakao';
 
 interface ResultDisplayProps {
   candidates: CandidatePoint[];
@@ -176,6 +176,60 @@ const DetailValue = styled.span<{ rank: number }>`
   font-size: 15px;
 `;
 
+const CommercialScoreTooltip = styled.div<{ rank: number }>`
+  font-size: 12px;
+  color: ${props => props.rank === 1 ? 'rgba(255, 255, 255, 0.8)' : '#64748b'};
+  margin-top: 4px;
+  font-weight: 400;
+`;
+
+const RecommendedSection = styled.div<{ rank: number }>`
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid ${props => props.rank === 1 ? 'rgba(255, 255, 255, 0.2)' : '#e2e8f0'};
+`;
+
+const RecommendedTitle = styled.div<{ rank: number }>`
+  font-size: 14px;
+  font-weight: 600;
+  color: ${props => props.rank === 1 ? 'rgba(255, 255, 255, 0.9)' : '#475569'};
+  margin-bottom: 8px;
+`;
+
+const RecommendedPlace = styled.div<{ rank: number }>`
+  background: ${props => props.rank === 1 ? 'rgba(255, 255, 255, 0.1)' : '#f8fafc'};
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+`;
+
+const PlaceName = styled.div<{ rank: number }>`
+  font-weight: 600;
+  color: ${props => props.rank === 1 ? 'white' : '#1e293b'};
+  margin-bottom: 4px;
+`;
+
+const PlaceTags = styled.div`
+  display: flex;
+  gap: 4px;
+  margin-bottom: 4px;
+`;
+
+const PlaceTag = styled.span<{ rank: number }>`
+  background: ${props => props.rank === 1 ? 'rgba(255, 255, 255, 0.2)' : '#e2e8f0'};
+  color: ${props => props.rank === 1 ? 'white' : '#64748b'};
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+`;
+
+const PlaceDescription = styled.div<{ rank: number }>`
+  color: ${props => props.rank === 1 ? 'rgba(255, 255, 255, 0.8)' : '#64748b'};
+  font-size: 12px;
+`;
+
 const getWeatherIcon = (condition: string) => {
   switch (condition?.toLowerCase()) {
     case 'clear': return '☀️';
@@ -184,6 +238,65 @@ const getWeatherIcon = (condition: string) => {
     case 'snow': return '❄️';
     default: return '🌤️';
   }
+};
+
+const getCommercialScoreDescription = (score: number) => {
+  if (score >= 80) return '활발한 상업지역 · 다양한 시설';
+  if (score >= 60) return '보통 상업지역 · 기본 시설';
+  if (score >= 40) return '주거 중심지역 · 편의시설';
+  return '조용한 지역 · 제한적 시설';
+};
+
+const getRecommendedPlaces = (candidate: CandidatePoint): RecommendedPlace[] => {
+  // 실제로는 백엔드에서 받아올 데이터지만, 현재는 지역별 샘플 데이터
+  const area = candidate.address.split(' ')[1] || '';
+  
+  if (area.includes('중구') || area.includes('명동') || area.includes('을지로')) {
+    return [
+      {
+        name: '스타벅스 명동점',
+        category: '카페',
+        tags: ['카공', '와이파이', '조용함'],
+        description: '넓은 공간과 좋은 와이파이로 작업하기 좋은 곳',
+        distance: 150
+      }
+    ];
+  }
+  
+  if (area.includes('강남') || area.includes('서초')) {
+    return [
+      {
+        name: '코워킹스페이스 위워크',
+        category: '업무공간',
+        tags: ['카공', '회의실', '네트워킹'],
+        description: '전문적인 업무 환경과 네트워킹 기회',
+        distance: 200
+      }
+    ];
+  }
+  
+  if (area.includes('홍대') || area.includes('마포')) {
+    return [
+      {
+        name: '홍대 루프탑 카페',
+        category: '카페',
+        tags: ['뷰맛집', '인스타', '분위기'],
+        description: '야경이 예쁜 루프탑에서 즐기는 여유',
+        distance: 100
+      }
+    ];
+  }
+  
+  // 기본 추천
+  return [
+    {
+      name: '근처 카페',
+      category: '카페',
+      tags: ['모임', '편안함'],
+      description: '만남하기 좋은 조용한 분위기',
+      distance: 100
+    }
+  ];
 };
 
 const ResultDisplay: React.FC<ResultDisplayProps> = ({ candidates, weather }) => {
@@ -243,7 +356,17 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ candidates, weather }) =>
                 <DetailItem rank={candidate.rank}>
                   <DetailLabel>🚇 평균 이동시간</DetailLabel>
                   <DetailValue rank={candidate.rank}>
-                    {candidate.averageTravelTime.toFixed(1)}분
+                    {(() => {
+                      const minutes = Math.round(candidate.averageTravelTime);
+                      if (minutes >= 60) {
+                        const hours = Math.floor(minutes / 60);
+                        const remainingMinutes = minutes % 60;
+                        return remainingMinutes > 0 
+                          ? `${hours}시간 ${remainingMinutes}분`
+                          : `${hours}시간`;
+                      }
+                      return `${minutes}분`;
+                    })()}
                   </DetailValue>
                 </DetailItem>
                 
@@ -252,8 +375,34 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ candidates, weather }) =>
                   <DetailValue rank={candidate.rank}>
                     {candidate.commercialScore.toFixed(1)}점
                   </DetailValue>
+                  <CommercialScoreTooltip rank={candidate.rank}>
+                    {getCommercialScoreDescription(candidate.commercialScore)}
+                  </CommercialScoreTooltip>
                 </DetailItem>
               </CandidateDetails>
+
+              <RecommendedSection rank={candidate.rank}>
+                <RecommendedTitle rank={candidate.rank}>
+                  💡 이 지역 추천 장소
+                </RecommendedTitle>
+                {getRecommendedPlaces(candidate).map((place, placeIndex) => (
+                  <RecommendedPlace key={placeIndex} rank={candidate.rank}>
+                    <PlaceName rank={candidate.rank}>
+                      {place.name} · {place.distance}m
+                    </PlaceName>
+                    <PlaceTags>
+                      {place.tags.map((tag, tagIndex) => (
+                        <PlaceTag key={tagIndex} rank={candidate.rank}>
+                          {tag}
+                        </PlaceTag>
+                      ))}
+                    </PlaceTags>
+                    <PlaceDescription rank={candidate.rank}>
+                      {place.description}
+                    </PlaceDescription>
+                  </RecommendedPlace>
+                ))}
+              </RecommendedSection>
             </CandidateItem>
           ))}
         </CandidateList>
