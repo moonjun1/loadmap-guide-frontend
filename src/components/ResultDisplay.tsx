@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { CandidatePoint, WeatherInfo, RecommendedPlace } from '../types/kakao';
+import { placeApi } from '../services/api';
 
 interface ResultDisplayProps {
   candidates: CandidatePoint[];
@@ -196,7 +197,7 @@ const RecommendedTitle = styled.div<{ rank: number }>`
   margin-bottom: 8px;
 `;
 
-const RecommendedPlace = styled.div<{ rank: number }>`
+const RecommendedPlaceCard = styled.div<{ rank: number }>`
   background: ${props => props.rank === 1 ? 'rgba(255, 255, 255, 0.1)' : '#f8fafc'};
   padding: 8px 12px;
   border-radius: 8px;
@@ -247,56 +248,137 @@ const getCommercialScoreDescription = (score: number) => {
   return '조용한 지역 · 제한적 시설';
 };
 
-const getRecommendedPlaces = (candidate: CandidatePoint): RecommendedPlace[] => {
-  // 실제로는 백엔드에서 받아올 데이터지만, 현재는 지역별 샘플 데이터
-  const area = candidate.address.split(' ')[1] || '';
-  
-  if (area.includes('중구') || area.includes('명동') || area.includes('을지로')) {
-    return [
-      {
-        name: '스타벅스 명동점',
-        category: '카페',
-        tags: ['카공', '와이파이', '조용함'],
-        description: '넓은 공간과 좋은 와이파이로 작업하기 좋은 곳',
-        distance: 150
+// 실제 백엔드 API에서 장소 데이터를 가져오는 커스텀 훅
+const useNearbyPlaces = (latitude: number, longitude: number) => {
+  const [places, setPlaces] = useState<RecommendedPlace[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchNearbyPlaces = async () => {
+      if (!latitude || !longitude) return;
+      
+      setLoading(true);
+      try {
+        const response = await placeApi.searchNearbyPlaces(latitude, longitude, 500);
+        if (response.success && response.data) {
+          const transformedPlaces: RecommendedPlace[] = response.data.slice(0, 3).map((place: any) => ({
+            name: place.name,
+            category: place.category === 'CAFE' ? '카페' : 
+                     place.category === 'RESTAURANT' ? '음식점' :
+                     place.category === 'ENTERTAINMENT' ? '오락' : '기타',
+            tags: [
+              place.category === 'CAFE' ? '카페' : '음식점',
+              place.rating ? `평점 ${place.rating}` : '리뷰 없음',
+              place.phone ? '전화 가능' : ''
+            ].filter(Boolean),
+            description: `${place.address} · 실제 영업 중인 장소`,
+            distance: Math.round(place.distanceMeters || 0)
+          }));
+          setPlaces(transformedPlaces);
+        }
+      } catch (error) {
+        console.error('장소 검색 오류:', error);
+        // 오류 시 기본값 설정
+        setPlaces([{
+          name: '주변 장소 검색 실패',
+          category: '정보 없음',
+          tags: ['서비스 일시 불가'],
+          description: '잠시 후 다시 시도해보세요',
+          distance: 0
+        }]);
+      } finally {
+        setLoading(false);
       }
-    ];
-  }
-  
-  if (area.includes('강남') || area.includes('서초')) {
-    return [
-      {
-        name: '코워킹스페이스 위워크',
-        category: '업무공간',
-        tags: ['카공', '회의실', '네트워킹'],
-        description: '전문적인 업무 환경과 네트워킹 기회',
-        distance: 200
-      }
-    ];
-  }
-  
-  if (area.includes('홍대') || area.includes('마포')) {
-    return [
-      {
-        name: '홍대 루프탑 카페',
-        category: '카페',
-        tags: ['뷰맛집', '인스타', '분위기'],
-        description: '야경이 예쁜 루프탑에서 즐기는 여유',
-        distance: 100
-      }
-    ];
-  }
-  
-  // 기본 추천
-  return [
-    {
-      name: '근처 카페',
-      category: '카페',
-      tags: ['모임', '편안함'],
-      description: '만남하기 좋은 조용한 분위기',
-      distance: 100
-    }
-  ];
+    };
+
+    fetchNearbyPlaces();
+  }, [latitude, longitude]);
+
+  return { places, loading };
+};
+
+// 각 후보지점별 추천 장소를 관리하는 컴포넌트
+const CandidateWithPlaces: React.FC<{ candidate: CandidatePoint; index: number }> = ({ candidate, index }) => {
+  const { places, loading } = useNearbyPlaces(candidate.latitude, candidate.longitude);
+
+  return (
+    <CandidateItem key={index} rank={candidate.rank}>
+      <RankBadge rank={candidate.rank}>
+        {candidate.rank === 1 ? '🏆 최적' : `${candidate.rank}위`}
+      </RankBadge>
+      
+      <CandidateHeader>
+        <CandidateTitle>
+          {candidate.placeName && candidate.placeName !== '장소명 없음' ? candidate.placeName : `후보지점 ${candidate.rank}`}
+        </CandidateTitle>
+        <ScoreBadge rank={candidate.rank}>
+          점수: {candidate.overallScore.toFixed(1)}
+        </ScoreBadge>
+      </CandidateHeader>
+
+      <CandidateDetails>
+        <DetailItem rank={candidate.rank}>
+          <DetailLabel>📍 주소</DetailLabel>
+          <DetailValue rank={candidate.rank}>
+            {candidate.address && candidate.address !== '주소 정보 없음' 
+              ? candidate.address 
+              : `${candidate.latitude.toFixed(4)}, ${candidate.longitude.toFixed(4)}`
+            }
+          </DetailValue>
+        </DetailItem>
+        
+        <DetailItem rank={candidate.rank}>
+          <DetailLabel>🚇 평균 이동시간</DetailLabel>
+          <DetailValue rank={candidate.rank}>
+            {(() => {
+              const minutes = Math.round(candidate.averageTravelTime);
+              if (minutes >= 60) {
+                const hours = Math.floor(minutes / 60);
+                const remainingMinutes = minutes % 60;
+                return remainingMinutes > 0 
+                  ? `${hours}시간 ${remainingMinutes}분`
+                  : `${hours}시간`;
+              }
+              return `${minutes}분`;
+            })()}
+          </DetailValue>
+        </DetailItem>
+        
+        <DetailItem rank={candidate.rank}>
+          <DetailLabel>🏢 상업지역 점수</DetailLabel>
+          <DetailValue rank={candidate.rank}>
+            {candidate.commercialScore.toFixed(1)}점
+          </DetailValue>
+          <CommercialScoreTooltip rank={candidate.rank}>
+            {getCommercialScoreDescription(candidate.commercialScore)}
+          </CommercialScoreTooltip>
+        </DetailItem>
+      </CandidateDetails>
+
+      <RecommendedSection rank={candidate.rank}>
+        <RecommendedTitle rank={candidate.rank}>
+          💡 이 지역 추천 장소 {loading && '(검색 중...)'}
+        </RecommendedTitle>
+        {places.map((place, placeIndex) => (
+          <RecommendedPlaceCard key={placeIndex} rank={candidate.rank}>
+            <PlaceName rank={candidate.rank}>
+              {place.name} · {place.distance}m
+            </PlaceName>
+            <PlaceTags>
+              {place.tags.map((tag, tagIndex) => (
+                <PlaceTag key={tagIndex} rank={candidate.rank}>
+                  {tag}
+                </PlaceTag>
+              ))}
+            </PlaceTags>
+            <PlaceDescription rank={candidate.rank}>
+              {place.description}
+            </PlaceDescription>
+          </RecommendedPlaceCard>
+        ))}
+      </RecommendedSection>
+    </CandidateItem>
+  );
 };
 
 const ResultDisplay: React.FC<ResultDisplayProps> = ({ candidates, weather }) => {
@@ -328,82 +410,7 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ candidates, weather }) =>
 
         <CandidateList>
           {candidates.map((candidate, index) => (
-            <CandidateItem key={index} rank={candidate.rank}>
-              <RankBadge rank={candidate.rank}>
-                {candidate.rank === 1 ? '🏆 최적' : `${candidate.rank}위`}
-              </RankBadge>
-              
-              <CandidateHeader>
-                <CandidateTitle>
-                  {candidate.placeName && candidate.placeName !== '장소명 없음' ? candidate.placeName : `후보지점 ${candidate.rank}`}
-                </CandidateTitle>
-                <ScoreBadge rank={candidate.rank}>
-                  점수: {candidate.overallScore.toFixed(1)}
-                </ScoreBadge>
-              </CandidateHeader>
-
-              <CandidateDetails>
-                <DetailItem rank={candidate.rank}>
-                  <DetailLabel>📍 주소</DetailLabel>
-                  <DetailValue rank={candidate.rank}>
-                    {candidate.address && candidate.address !== '주소 정보 없음' 
-                      ? candidate.address 
-                      : `${candidate.latitude.toFixed(4)}, ${candidate.longitude.toFixed(4)}`
-                    }
-                  </DetailValue>
-                </DetailItem>
-                
-                <DetailItem rank={candidate.rank}>
-                  <DetailLabel>🚇 평균 이동시간</DetailLabel>
-                  <DetailValue rank={candidate.rank}>
-                    {(() => {
-                      const minutes = Math.round(candidate.averageTravelTime);
-                      if (minutes >= 60) {
-                        const hours = Math.floor(minutes / 60);
-                        const remainingMinutes = minutes % 60;
-                        return remainingMinutes > 0 
-                          ? `${hours}시간 ${remainingMinutes}분`
-                          : `${hours}시간`;
-                      }
-                      return `${minutes}분`;
-                    })()}
-                  </DetailValue>
-                </DetailItem>
-                
-                <DetailItem rank={candidate.rank}>
-                  <DetailLabel>🏢 상업지역 점수</DetailLabel>
-                  <DetailValue rank={candidate.rank}>
-                    {candidate.commercialScore.toFixed(1)}점
-                  </DetailValue>
-                  <CommercialScoreTooltip rank={candidate.rank}>
-                    {getCommercialScoreDescription(candidate.commercialScore)}
-                  </CommercialScoreTooltip>
-                </DetailItem>
-              </CandidateDetails>
-
-              <RecommendedSection rank={candidate.rank}>
-                <RecommendedTitle rank={candidate.rank}>
-                  💡 이 지역 추천 장소
-                </RecommendedTitle>
-                {getRecommendedPlaces(candidate).map((place, placeIndex) => (
-                  <RecommendedPlace key={placeIndex} rank={candidate.rank}>
-                    <PlaceName rank={candidate.rank}>
-                      {place.name} · {place.distance}m
-                    </PlaceName>
-                    <PlaceTags>
-                      {place.tags.map((tag, tagIndex) => (
-                        <PlaceTag key={tagIndex} rank={candidate.rank}>
-                          {tag}
-                        </PlaceTag>
-                      ))}
-                    </PlaceTags>
-                    <PlaceDescription rank={candidate.rank}>
-                      {place.description}
-                    </PlaceDescription>
-                  </RecommendedPlace>
-                ))}
-              </RecommendedSection>
-            </CandidateItem>
+            <CandidateWithPlaces key={index} candidate={candidate} index={index} />
           ))}
         </CandidateList>
       </Content>
