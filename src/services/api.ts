@@ -50,14 +50,16 @@ const api = axios.create({
 
 export const locationApi = {
   // 기본 중간지점 계산
-  calculateMiddlePoint: async (locations: Location[]): Promise<MiddlePointResponse> => {
-    const response = await api.post('/location/middle-point/simple', locations);
+  calculateMiddlePoint: async (locations: Location[], transportationType = 'CAR'): Promise<MiddlePointResponse> => {
+    const requestData = { locations, transportationType };
+    const response = await api.post('/location/middle-point/simple', requestData);
     return transformBackendResponse(response.data.data);
   },
 
   // 날씨 정보 포함 중간지점 계산
-  calculateMiddlePointWithWeather: async (locations: Location[]): Promise<MiddlePointResponse> => {
-    const response = await api.post('/location/middle-point/with-weather', locations);
+  calculateMiddlePointWithWeather: async (locations: Location[], transportationType = 'CAR'): Promise<MiddlePointResponse> => {
+    const requestData = { locations, transportationType };
+    const response = await api.post('/location/middle-point/with-weather', requestData);
     const transformedData = transformBackendResponse(response.data.data);
     
       

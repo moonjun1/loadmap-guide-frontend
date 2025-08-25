@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import KakaoMap from './components/KakaoMap';
 import LocationForm from './components/LocationForm';
 import ResultDisplay from './components/ResultDisplay';
+import TagFilter from './components/TagFilter';
 import { Location, CandidatePoint, WeatherInfo } from './types/kakao';
 import { locationApi } from './services/api';
 
@@ -120,6 +121,7 @@ function App() {
   const [weather, setWeather] = useState<WeatherInfo | undefined>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   const handleAddLocation = (location: Location) => {
     setLocations(prev => [...prev, location]);
@@ -135,7 +137,7 @@ function App() {
     }
   };
 
-  const handleCalculate = async () => {
+  const handleCalculate = async (transportationType = 'CAR') => {
     if (locations.length < 2) {
       setError('최소 2개 이상의 위치를 입력해주세요.');
       return;
@@ -146,7 +148,7 @@ function App() {
 
     try {
       // 날씨 정보 포함하여 중간지점 계산
-      const result = await locationApi.calculateMiddlePointWithWeather(locations);
+      const result = await locationApi.calculateMiddlePointWithWeather(locations, transportationType);
       
       if (result.success) {
         setCandidates(result.data.candidates);
@@ -159,7 +161,7 @@ function App() {
       
       // 기본 계산 API로 재시도
       try {
-        const basicResult = await locationApi.calculateMiddlePoint(locations);
+        const basicResult = await locationApi.calculateMiddlePoint(locations, transportationType);
         if (basicResult.success && basicResult.data.candidates) {
           setCandidates(basicResult.data.candidates);
           setWeather(undefined);
@@ -194,7 +196,17 @@ function App() {
             />
             
             {candidates.length > 0 && (
-              <ResultDisplay candidates={candidates} weather={weather} />
+              <>
+                <TagFilter 
+                  selectedTags={selectedTags}
+                  onTagsChange={setSelectedTags}
+                />
+                <ResultDisplay 
+                  candidates={candidates} 
+                  weather={weather}
+                  selectedTags={selectedTags}
+                />
+              </>
             )}
           </LeftPanel>
 

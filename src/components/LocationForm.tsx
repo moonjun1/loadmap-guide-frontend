@@ -6,7 +6,7 @@ interface LocationFormProps {
   locations: Location[];
   onAddLocation: (location: Location) => void;
   onRemoveLocation: (index: number) => void;
-  onCalculate: () => void;
+  onCalculate: (transportationType?: string) => void;
   loading: boolean;
 }
 
@@ -198,6 +198,51 @@ const LoadingSpinner = styled.div`
   }
 `;
 
+const TransportSection = styled.div`
+  margin-bottom: 24px;
+`;
+
+const TransportTitle = styled.h3`
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const TransportOptions = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 8px;
+`;
+
+const TransportOption = styled.button<{ selected: boolean }>`
+  padding: 12px 16px;
+  border: 2px solid ${props => props.selected ? '#3b82f6' : '#f1f5f9'};
+  border-radius: 12px;
+  background: ${props => props.selected ? '#f0f8ff' : 'white'};
+  color: ${props => props.selected ? '#1e40af' : '#64748b'};
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+
+  &:hover {
+    border-color: #3b82f6;
+    background: #f0f8ff;
+    color: #1e40af;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(59, 130, 246, 0.1);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
 const LocationForm: React.FC<LocationFormProps> = ({
   locations,
   onAddLocation,
@@ -206,6 +251,15 @@ const LocationForm: React.FC<LocationFormProps> = ({
   loading,
 }) => {
   const [addressInput, setAddressInput] = useState('');
+  const [selectedTransport, setSelectedTransport] = useState('CAR');
+
+  const transportOptions = [
+    { value: 'CAR', label: '🚗 자동차', description: '평균 35km/h' },
+    { value: 'SUBWAY', label: '🚇 지하철', description: '평균 40km/h' },
+    { value: 'BUS', label: '🚌 버스', description: '평균 20km/h' },
+    { value: 'PUBLIC_TRANSPORT', label: '🚊 대중교통', description: '지하철+버스' },
+    { value: 'WALK', label: '🚶 도보', description: '평균 5km/h' }
+  ];
 
   const handleAddLocation = () => {
     if (addressInput.trim() && locations.length < 10) {
@@ -286,8 +340,27 @@ const LocationForm: React.FC<LocationFormProps> = ({
         </p>
       )}
 
+      <TransportSection>
+        <TransportTitle>🚗 교통수단 선택</TransportTitle>
+        <TransportOptions>
+          {transportOptions.map((option) => (
+            <TransportOption
+              key={option.value}
+              selected={selectedTransport === option.value}
+              onClick={() => setSelectedTransport(option.value)}
+              type="button"
+            >
+              <div>{option.label}</div>
+              <div style={{ fontSize: '10px', marginTop: '2px', opacity: 0.7 }}>
+                {option.description}
+              </div>
+            </TransportOption>
+          ))}
+        </TransportOptions>
+      </TransportSection>
+
       <CalculateButton
-        onClick={onCalculate}
+        onClick={() => onCalculate(selectedTransport)}
         disabled={locations.length < 2 || loading}
       >
         {loading && <LoadingSpinner />}

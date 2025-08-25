@@ -6,6 +6,7 @@ import { placeApi } from '../services/api';
 interface ResultDisplayProps {
   candidates: CandidatePoint[];
   weather?: WeatherInfo;
+  selectedTags?: string[];
 }
 
 const ResultContainer = styled.div`
@@ -249,7 +250,7 @@ const getCommercialScoreDescription = (score: number) => {
 };
 
 // 실제 백엔드 API에서 장소 데이터를 가져오는 커스텀 훅
-const useNearbyPlaces = (latitude: number, longitude: number) => {
+const useNearbyPlaces = (latitude: number, longitude: number, selectedTags?: string[]) => {
   const [places, setPlaces] = useState<RecommendedPlace[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -259,7 +260,23 @@ const useNearbyPlaces = (latitude: number, longitude: number) => {
       
       setLoading(true);
       try {
-        const response = await placeApi.searchNearbyPlaces(latitude, longitude, 500);
+        let response;
+        
+        // 선택된 태그가 있으면 태그 기반 검색, 없으면 일반 검색
+        if (selectedTags && selectedTags.length > 0) {
+          const params = new URLSearchParams();
+          selectedTags.forEach(tag => params.append('tags', tag));
+          params.append('latitude', latitude.toString());
+          params.append('longitude', longitude.toString());
+          params.append('radius', '1000');
+          params.append('limit', '3');
+          
+          const tagResponse = await fetch(`/api/places/search/tags?${params}`);
+          response = await tagResponse.json();
+        } else {
+          response = await placeApi.searchNearbyPlaces(latitude, longitude, 500);
+        }
+        
         if (response.success && response.data) {
           const transformedPlaces: RecommendedPlace[] = response.data.slice(0, 3).map((place: any) => ({
             name: place.name,
@@ -269,9 +286,12 @@ const useNearbyPlaces = (latitude: number, longitude: number) => {
             tags: [
               place.category === 'CAFE' ? '카페' : '음식점',
               place.rating ? `평점 ${place.rating}` : '리뷰 없음',
-              place.phone ? '전화 가능' : ''
+              place.phone ? '전화 가능' : '',
+              ...(selectedTags && selectedTags.length > 0 ? ['태그 필터 적용'] : [])
             ].filter(Boolean),
-            description: `${place.address} · 실제 영업 중인 장소`,
+            description: selectedTags && selectedTags.length > 0 
+              ? `${place.address} · 선택한 태그와 일치하는 장소`
+              : `${place.address} · 실제 영업 중인 장소`,
             distance: Math.round(place.distanceMeters || 0)
           }));
           setPlaces(transformedPlaces);
@@ -280,7 +300,7 @@ const useNearbyPlaces = (latitude: number, longitude: number) => {
         console.error('장소 검색 오류:', error);
         // 오류 시 기본값 설정
         setPlaces([{
-          name: '주변 장소 검색 실패',
+          name: selectedTags && selectedTags.length > 0 ? '태그 조건 맞는 장소 없음' : '주변 장소 검색 실패',
           category: '정보 없음',
           tags: ['서비스 일시 불가'],
           description: '잠시 후 다시 시도해보세요',
@@ -292,14 +312,18 @@ const useNearbyPlaces = (latitude: number, longitude: number) => {
     };
 
     fetchNearbyPlaces();
-  }, [latitude, longitude]);
+  }, [latitude, longitude, selectedTags]);
 
   return { places, loading };
 };
 
 // 각 후보지점별 추천 장소를 관리하는 컴포넌트
-const CandidateWithPlaces: React.FC<{ candidate: CandidatePoint; index: number }> = ({ candidate, index }) => {
-  const { places, loading } = useNearbyPlaces(candidate.latitude, candidate.longitude);
+const CandidateWithPlaces: React.FC<{ 
+  candidate: CandidatePoint; 
+  index: number; 
+  selectedTags?: string[] 
+}> = ({ candidate, index, selectedTags }) => {
+  const { places, loading } = useNearbyPlaces(candidate.latitude, candidate.longitude, selectedTags);
 
   return (
     <CandidateItem key={index} rank={candidate.rank}>
@@ -381,7 +405,7 @@ const CandidateWithPlaces: React.FC<{ candidate: CandidatePoint; index: number }
   );
 };
 
-const ResultDisplay: React.FC<ResultDisplayProps> = ({ candidates, weather }) => {
+const ResultDisplay: React.FC<ResultDisplayProps> = ({ candidates, weather, selectedTags }) => {
   if (candidates.length === 0) {
     return null;
   }
@@ -410,7 +434,12 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ candidates, weather }) =>
 
         <CandidateList>
           {candidates.map((candidate, index) => (
-            <CandidateWithPlaces key={index} candidate={candidate} index={index} />
+            <CandidateWithPlaces 
+              key={index} 
+              candidate={candidate} 
+              index={index} 
+              selectedTags={selectedTags}
+            />
           ))}
         </CandidateList>
       </Content>
